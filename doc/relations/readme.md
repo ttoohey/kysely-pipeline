@@ -72,23 +72,14 @@ export function addPetsToPerson<PetO, PetT>(
           ).as("pets"),
         ),
       )
-      .map(<T>(data: T & { pets?: JsonFrom<PetO>[] }) => {
-        const { pets, ...person } = data;
-        return {
-          ...person,
-          pets:
-            pets?.map((pet) =>
-              petPipeline.transform(petFromJson(pet) as PetO),
-            ) ?? [],
-        };
-      });
+      .map(({ pets, ...rest }) => ({
+        ...rest,
+        pets: pets.map((pet) =>
+          petPipeline.transform(petFromJson(pet) as PetO),
+        ),
+      }));
 }
 ```
-
-The `JsonFrom` type is a utility type to typecast a type into it's JSON-ified
-version. Since the `pets` field of `data` comes from the
-`jsonArrayFrom().as("pets")` call, the types are cast to JSON types (`null`,
-`number`, `string`, `object`, `array`).
 
 The `petFromJson()` function performs the type casting.
 
@@ -109,6 +100,11 @@ export function petFromJson<T extends Partial<JsonFrom<Pet>>>(json: T) {
   return data;
 }
 ```
+
+The `JsonFrom` type is a utility type to typecast a type into it's JSON-ified
+version. Since the `pets` field of `data` comes from the
+`jsonArrayFrom().as("pets")` call, the types are cast to JSON types (`null`,
+`number`, `string`, `object`, `array`).
 
 The same pattern is followed to create the reciprical relationship from `pet`
 to `person` via the `pet.owner_id` field.
@@ -132,16 +128,15 @@ export function addOwnerToPet<PersonO, PersonT>(
         query.select(({ ref }) =>
           jsonObjectFrom(
             ownerPipeline.query.whereRef("person.id", "=", ref("pet.owner_id")),
-          ).as("owner"),
+          )
+            .$notNull()
+            .as("owner"),
         ),
       )
-      .map(<T>(data: T & { owner?: JsonFrom<PersonO> }) => {
-        const { owner, ...pet } = data;
-        return {
-          ...pet,
-          owner: ownerPipeline.transform(personFromJson(owner!) as PersonO),
-        };
-      });
+      .map(({ owner, ...rest }) => ({
+        ...rest,
+        owner: ownerPipeline.transform(personFromJson(owner!) as PersonO),
+      }));
 }
 ```
 
@@ -175,9 +170,9 @@ export function personFromJson<T extends Partial<JsonFrom<Person>>>(json: T) {
 
 > [!Note]
 >
-> Why does `.map()` require generic types and the type cast for the final
-> .transform()? This is a good question, and the short answer is I don't
-> know. Perhaps one day my typescript-fu will be better and I can answer it.
+> Why does `.map()` require the type assertions for the final .transform()?
+> This is a good question, and the short answer is I don't know. Perhaps one
+> day my typescript-fu will be better and I can answer it.
 
 The "mother" relationship is again similar to the `pet.owner -> person`
 relationship. It is also a many-to-one relation, but since it's a "to self"
@@ -210,20 +205,13 @@ export function addMotherToPerson<MotherO extends { id: number }, MotherT>(
           ).as("mother"),
         ),
       )
-      .map(
-        <T>(
-          data: T & { mother?: ({ id: number } & JsonFrom<MotherO>) | null },
-        ) => {
-          const { mother, ...rest } = data;
-          return {
-            ...rest,
-            mother:
-              mother === null
-                ? null
-                : motherPipeline.transform(personFromJson(mother!) as MotherO),
-          };
-        },
-      );
+      .map(({ mother, ...rest }) => ({
+        ...rest,
+        mother:
+          mother === null
+            ? null
+            : motherPipeline.transform(personFromJson(mother!) as MotherO),
+      }));
 }
 ```
 
@@ -245,6 +233,8 @@ makes `m.id` resolvable to something kysely understands).
 > would be better optimised as
 > `SELECT * FROM person AS t WHERE t.id=person.mother_id)`.
 
-Since `mother_id` is nullable, then so too is `mother`. This is reflected in the
-`.map()` transformation function in the type of `T` and in javascript logic to
-return `null` if the value is `null`.
+Since `person.mother_id` is nullable, then so too is `mother`. This is reflected
+in the `.map()` transformation function return `null` if the value is `null`.
+
+Again, type assertions are required in the final `.transform()` so care must
+be taken when creating these functions.

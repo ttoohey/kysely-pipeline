@@ -1,5 +1,5 @@
 import type { SelectQueryBuilder } from "kysely";
-import type { DeepMerge, Pipeline, QueryBuilderPipeline } from "./types.js";
+import type { Merge, Pipeline, QueryBuilderPipeline } from "./types.js";
 import { paginate } from "./paginate.js";
 import { cursor } from "./cursor.js";
 import { list } from "./list.js";
@@ -17,18 +17,10 @@ function pipeline<DB, TB extends keyof DB, O, T, L extends boolean>(
       func: (
         qb: SelectQueryBuilder<DB, TB, O>,
       ) => SelectQueryBuilder<DB, TB, N>,
-    ): QueryBuilderPipeline<
-      DB,
-      TB,
-      N,
-      DeepMerge<N, Omit<T, Exclude<keyof O, keyof N>>>,
-      L
-    > =>
+    ): QueryBuilderPipeline<DB, TB, N, Merge<O, T, N>, L> =>
       pipeline(
         func(query),
-        transformer as unknown as (
-          data: N,
-        ) => DeepMerge<N, Omit<T, Exclude<keyof O, keyof N>>>,
+        transformer as unknown as (data: N) => Merge<O, T, N>,
         throwIfNotFound,
       ),
     map: (func) =>

@@ -13,27 +13,7 @@ export type JsonFrom<T> = {
       : string;
 };
 
-export type DeepMerge<A, B> = {
-  [K in keyof A | keyof B]: K extends keyof B
-    ? K extends keyof A
-      ? B[K] extends any[] // If B is an array, B wins immediately
-        ? B[K]
-        : A[K] extends any[] // If A is an array but B is not, B wins
-          ? B[K]
-          : A[K] extends object
-            ? B[K] extends Date
-              ? B[K]
-              : B[K] extends object
-                ? DeepMerge<A[K], B[K]> // Both are non-array objects, merge recursively
-                : B[K]
-            : B[K]
-      : B[K]
-    : K extends keyof A
-      ? A[K]
-      : never;
-} extends infer O
-  ? { [K in keyof O]: O[K] }
-  : never;
+export type Merge<O, T, N> = N & Omit<T, Exclude<keyof O, keyof N>>;
 
 export type QueryBuilderPipeline<
   DB,
@@ -49,13 +29,7 @@ export interface Pipeline<DB, TB extends keyof DB, O, T, L extends boolean> {
   query: SelectQueryBuilder<DB, TB, O>;
   extend<N>(
     func: (qb: SelectQueryBuilder<DB, TB, O>) => SelectQueryBuilder<DB, TB, N>,
-  ): QueryBuilderPipeline<
-    DB,
-    TB,
-    N,
-    DeepMerge<N, Omit<T, Exclude<keyof O, keyof N>>>,
-    L
-  >;
+  ): QueryBuilderPipeline<DB, TB, N, Merge<O, T, N>, L>;
   map<N>(func: (data: T) => N): QueryBuilderPipeline<DB, TB, O, N, L>;
   compose<QN, TN>(
     func: (

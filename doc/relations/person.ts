@@ -7,7 +7,6 @@ import {
 } from "kysely-pipeline";
 import { Database, db } from "./db.js";
 import { petFromJson, PetPipeline } from "./pet.js";
-import assert from "node:assert";
 
 export type PersonPipeline<
   O,
@@ -63,16 +62,12 @@ export function addPetsToPerson<PetO, PetT>(
           ).as("pets"),
         ),
       )
-      .map(<T>(data: T & { pets?: JsonFrom<PetO>[] }) => {
-        const { pets, ...person } = data;
-        return {
-          ...person,
-          pets:
-            pets?.map((pet) =>
-              petPipeline.transform(petFromJson(pet) as PetO),
-            ) ?? [],
-        };
-      });
+      .map(({ pets, ...rest }) => ({
+        ...rest,
+        pets: pets.map((pet) =>
+          petPipeline.transform(petFromJson(pet) as PetO),
+        ),
+      }));
 }
 
 /**
@@ -99,18 +94,11 @@ export function addMotherToPerson<MotherO extends { id: number }, MotherT>(
           ).as("mother"),
         ),
       )
-      .map(
-        <T>(
-          data: T & { mother?: ({ id: number } & JsonFrom<MotherO>) | null },
-        ) => {
-          const { mother, ...rest } = data;
-          return {
-            ...rest,
-            mother:
-              mother === null
-                ? null
-                : motherPipeline.transform(personFromJson(mother!) as MotherO),
-          };
-        },
-      );
+      .map(({ mother, ...rest }) => ({
+        ...rest,
+        mother:
+          mother === null
+            ? null
+            : motherPipeline.transform(personFromJson(mother!) as MotherO),
+      }));
 }

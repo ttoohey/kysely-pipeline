@@ -7,7 +7,6 @@ import { Database, db } from "./db.js";
 import { personFromJson, PersonPipeline } from "./person.js";
 import { jsonObjectFrom } from "kysely/helpers/postgres";
 import { Selectable } from "kysely";
-import assert from "node:assert";
 
 export type PetPipeline<
   O,
@@ -58,14 +57,13 @@ export function addOwnerToPet<PersonO, PersonT>(
         query.select(({ ref }) =>
           jsonObjectFrom(
             ownerPipeline.query.whereRef("person.id", "=", ref("pet.owner_id")),
-          ).as("owner"),
+          )
+            .$notNull()
+            .as("owner"),
         ),
       )
-      .map(<T>(data: T & { owner?: JsonFrom<PersonO> }) => {
-        const { owner, ...pet } = data;
-        return {
-          ...pet,
-          owner: ownerPipeline.transform(personFromJson(owner!) as PersonO),
-        };
-      });
+      .map(({ owner, ...rest }) => ({
+        ...rest,
+        owner: ownerPipeline.transform(personFromJson(owner!) as PersonO),
+      }));
 }
