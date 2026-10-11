@@ -1,18 +1,21 @@
 import type { SelectQueryBuilder } from "kysely";
 import type { Merge, Pipeline, QueryBuilderPipeline } from "./types.js";
-import { paginate } from "./paginate.js";
 import { cursor } from "./cursor.js";
 import { list } from "./list.js";
 import { streamable } from "./streamable.js";
 import { firstable } from "./firstable.js";
+import { seek } from "./seek.js";
+import { page } from "./page.js";
 
 function pipeline<DB, TB extends keyof DB, O, T, L extends boolean>(
   query: SelectQueryBuilder<DB, TB, O>,
-  transformer: (data: O) => T,
+  transform: (data: O) => T,
   throwIfNotFound: L,
 ): QueryBuilderPipeline<DB, TB, O, T, L> {
   const p: Pipeline<DB, TB, O, T, L> = {
     query,
+    transform,
+    throwIfNotFound: () => pipeline(query, transform, true),
     extend: <N>(
       func: (
         qb: SelectQueryBuilder<DB, TB, O>,
@@ -20,20 +23,19 @@ function pipeline<DB, TB extends keyof DB, O, T, L extends boolean>(
     ): QueryBuilderPipeline<DB, TB, N, Merge<O, T, N>, L> =>
       pipeline(
         func(query),
-        transformer as unknown as (data: N) => Merge<O, T, N>,
+        transform as unknown as (data: N) => Merge<O, T, N>,
         throwIfNotFound,
       ),
     map: (func) =>
-      pipeline(query, (data) => func(transformer(data)), throwIfNotFound),
-    compose: (func) => func(pipeline(query, transformer, throwIfNotFound)),
-    throwIfNotFound: () => pipeline(query, transformer, true),
-    cursor: cursor(query, transformer),
-    list: list(query, transformer),
-    paginate: paginate(query, transformer),
-    transform: transformer,
+      pipeline(query, (data) => func(transform(data)), throwIfNotFound),
+    compose: (func) => func(pipeline(query, transform, throwIfNotFound)),
+    cursor: cursor(query, transform),
+    list: list(query, transform),
+    page: page(query, transform),
+    seek: seek(query, transform),
   };
-  const s = streamable(p, query, transformer);
-  const f = firstable(s, query, transformer, throwIfNotFound);
+  const s = streamable(p, query, transform);
+  const f = firstable(s, query, transform, throwIfNotFound);
   Object.freeze(f);
   return f;
 }

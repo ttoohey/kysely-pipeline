@@ -3,42 +3,113 @@ import {
   SelectQueryBuilder,
   StringReference,
 } from "kysely";
+import { buildCompositeOrderBy, buildCompositeWhere } from "./keyset.js";
+import { Direction, ExtractTupleTypes } from "./pagination.js";
+
+type CursorOptions<TCursor, TDirection> = {
+  cursor?: TCursor;
+  direction?: TDirection;
+  batchSize?: number;
+};
+
+type CompositeKeyFn<DB, TB extends keyof DB, T> = <
+  const TColumn extends readonly StringReference<DB, TB>[],
+  TCursor extends ExtractTupleTypes<DB, TB, TColumn>,
+  TDirection extends Direction | Direction[],
+>(
+  column: TColumn,
+  options?: CursorOptions<TCursor, TDirection>,
+) => AsyncGenerator<T>;
+
+type SingleKeyFn<DB, TB extends keyof DB, T> = <
+  const TColumn extends StringReference<DB, TB>,
+  TCursor extends ExtractTypeFromReferenceExpression<DB, TB, TColumn>,
+  TDirection extends Direction,
+>(
+  column: TColumn,
+  options?: CursorOptions<TCursor, TDirection>,
+) => AsyncGenerator<T>;
+
+export type CursorFn<DB, TB extends keyof DB, T> = SingleKeyFn<DB, TB, T> &
+  CompositeKeyFn<DB, TB, T>;
 
 export function cursor<DB, TB extends keyof DB, O, T>(
   query: SelectQueryBuilder<DB, TB, O>,
   transformer: (data: O) => T,
 ) {
-  return async function* <RE extends StringReference<DB, TB>>(
-    indexColumn: RE,
+  return async function* <
+    const TColumn extends
+      StringReference<DB, TB> | readonly StringReference<DB, TB>[],
+    TCursor extends (TColumn extends unknown[]
+      ? ExtractTupleTypes<DB, TB, TColumn>
+      : ExtractTypeFromReferenceExpression<DB, TB, TColumn>),
+    TDirection extends (TColumn extends unknown[]
+      ? Direction | Direction[]
+      : Direction),
+  >(
+    column: TColumn,
     {
-      startAt,
-      sortDirection = "asc",
+      cursor,
+      direction,
       batchSize = 1_000,
-    }: {
-      startAt?: ExtractTypeFromReferenceExpression<DB, TB, RE>;
-      sortDirection?: "asc" | "desc";
-      batchSize?: number;
-    } = {},
+    }: CursorOptions<TCursor, TDirection> = {},
   ) {
-    let currentCursor: any = startAt;
-    const fieldName = indexColumn.split(".").at(-1) as keyof O;
-    const whereOp = sortDirection === "asc" ? ">" : "<";
+    const isComposite = Array.isArray(column);
+    const columns = isComposite
+      ? (column as readonly StringReference<DB, TB>[])
+      : [column as StringReference<DB, TB>];
+    const directions: Direction[] = Array.isArray(direction)
+      ? direction
+      : Array(columns.length).fill(direction === "desc" ? "desc" : "asc");
+
     do {
       const items = await query
         .clearLimit()
         .clearOrderBy()
-        .select(indexColumn)
+        .select(columns)
         .limit(batchSize)
-        .orderBy(indexColumn, sortDirection)
-        .$if(currentCursor !== undefined, (q) =>
-          q.where(indexColumn, whereOp, currentCursor!),
-        )
+        .$if(isComposite, (q) => {
+          const columns = column as readonly StringReference<DB, TB>[];
+          return q
+            .$call(buildCompositeOrderBy(columns, directions))
+            .$if(Boolean(cursor), (q) => {
+              const compCursor = cursor! as ExtractTupleTypes<
+                DB,
+                TB,
+                unknown[]
+              >;
+              return q.where((eb) =>
+                buildCompositeWhere(eb, columns, directions, compCursor),
+              );
+            });
+        })
+        .$if(!isComposite, (q) => {
+          const columns = [column as StringReference<DB, TB>] as const;
+          return q
+            .$call(buildCompositeOrderBy(columns, directions))
+            .$if(Boolean(cursor), (q) => {
+              const compCursor = [cursor!];
+              return q.where((eb) =>
+                buildCompositeWhere(eb, columns, directions, compCursor),
+              );
+            });
+        })
         .execute();
       for (const item of items) {
         yield transformer(item);
       }
+      if (items.length < batchSize) {
+        break;
+      }
       const lastRow = items.at(-1);
-      currentCursor = lastRow?.[fieldName] ?? undefined;
-    } while (currentCursor !== undefined);
-  };
+      const fieldNames = columns.map(
+        (column) => column.split(".").at(-1) as keyof O,
+      );
+      cursor = (
+        isComposite
+          ? fieldNames.map((fieldName) => lastRow![fieldName])
+          : lastRow![fieldNames[0]]
+      ) as TCursor;
+    } while (cursor !== undefined);
+  } as CursorFn<DB, TB, T>;
 }

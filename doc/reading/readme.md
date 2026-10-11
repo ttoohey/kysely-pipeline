@@ -3,10 +3,11 @@
 The different ways of reading data from a pipeline.
 
 - use `await` to get a single database record
-- use `for await` to stream database records
+- use `for await..of` to stream database records
 - use `.list()` to get an array of records
-- use `.paginate()` to get an array of records and pagination meta data
-- use `.cursor()` to use keyset iteration to stream database records
+- use `.page()` to get an array of records and pagination meta data using offset pagination
+- use `.seek()` to get an array of records and paginateion meta data using cursor/keyset pagination
+- use `.cursor()` to use cursor/keyset iteration to stream database records
 
 ```ts
 import { Selectable } from "kysely";
@@ -16,6 +17,7 @@ import { Database, db } from "./db.js";
 type Person = Selectable<Database["person"]>;
 
 const query = db.selectFrom("person").selectAll();
+const pipeline = () => createQueryPipeline(query);
 
 /**
  * A pipeline is a "thenable" object which resolves
@@ -24,7 +26,7 @@ const query = db.selectFrom("person").selectAll();
  * It calls the query builder `executeTakeFirst()` method.
  */
 async () => {
-  const person = await createQueryPipeline(query);
+  const person = await pipeline();
   console.log(person satisfies Person | null);
 };
 
@@ -36,7 +38,7 @@ async () => {
  * It calls the query builder `executeTakeFirstOrThrow()` method.
  */
 async () => {
-  const person = await createQueryPipeline(query).throwIfNotFound();
+  const person = await pipeline().throwIfNotFound();
   console.log(person satisfies Person);
 };
 
@@ -49,17 +51,17 @@ async () => {
  * It calls the query builder `execute()` method.
  */
 async () => {
-  const people = await createQueryPipeline(query).list();
+  const people = await pipeline().list();
   console.log(people satisfies Person[]);
 };
 async (limit?: number, offset?: number) => {
-  const people = await createQueryPipeline(query).list(limit, offset);
+  const people = await pipeline().list(limit, offset);
   console.log(people satisfies Person[]);
 };
 
 /**
- * `paginate()` will return an array of results along
- * with pagination meta data.
+ * `.page()` will return an array of results along with pagination meta data
+ * using offset pagination.
  *
  * It calls the query builder `execute()` method.
  *
@@ -70,15 +72,73 @@ async (limit?: number, offset?: number) => {
  * The `meta` result shape depends on `options.counting`.
  */
 async (page: number = 1, pageSize: number = 10) => {
-  const result = await createQueryPipeline(query).paginate(page, pageSize);
+  const result = await pipeline().page(page, pageSize);
   console.log(result.items satisfies Person[], result.meta);
 };
 
 async (page: number = 1, pageSize: number = 10) => {
-  const result = await createQueryPipeline(query).paginate(page, pageSize, {
+  const result = await pipeline().page(page, pageSize, {
     counting: false,
   });
   console.log(result.items satisfies Person[], result.meta);
+};
+
+/**
+ * `.seek()` will return an array of results along with pagination meta data
+ * using cursor/keyset pagination.
+ *
+ * It calls the query builder `execute()` method.
+ *
+ * The cursor index column may be a single column, which should be a unique
+ * index (cursor pagination results can be jumbled if it's not).
+ *
+ * The cursor index may also be a list of columns, and again should define
+ * a unique index. The typical way to do this is to put the primary key as
+ * the final item in the list.
+ *
+ * Forward and reverse pagination is supported via `first` and `last` fields
+ * and following the `nextCursor` and `previousCursor` values in the returned
+ * meta data.
+ *
+ * If `options.counting` is true it will execute a second query to get the
+ * total count of records. (default is false)
+ */
+async () => {
+  const result = await pipeline().seek("person.id", {
+    first: 10,
+  });
+  console.log(result.items satisfies Person[], result.meta);
+};
+
+async () => {
+  const page1 = await pipeline().seek(["person.created_at", "id"], {
+    first: 10,
+    direction: ["asc", "desc"],
+  });
+  if (page1.meta.hasNext) {
+    const page2 = await pipeline().seek(["person.created_at", "id"], {
+      first: 10,
+      direction: ["asc", "desc"],
+      cursor: page1.meta.nextCursor,
+    });
+    console.log(page2.items satisfies Person[]);
+  }
+};
+
+async (cursor: [Date, number]) => {
+  const result = await pipeline().seek(["created_at", "person.id"], {
+    first: 10,
+    cursor,
+    counting: true,
+    direction: "desc",
+  });
+  console.log(
+    result.items satisfies Person[],
+    result.meta.totalItems satisfies number,
+  );
+  if (result.meta.hasNext) {
+    console.log(result.meta.nextCursor satisfies [Date, number]);
+  }
 };
 
 /**
@@ -88,7 +148,7 @@ async (page: number = 1, pageSize: number = 10) => {
  * It calls the query builder `stream()` method.
  */
 async () => {
-  for await (const person of createQueryPipeline(query)) {
+  for await (const person of pipeline()) {
     console.log(person satisfies Person);
   }
 };
@@ -99,7 +159,16 @@ async () => {
  * async results.
  */
 async () => {
-  for await (const person of createQueryPipeline(query).cursor("person.id")) {
+  for await (const person of pipeline().cursor("person.id")) {
+    console.log(person satisfies Person);
+  }
+};
+
+/**
+ * `.cursor()` with a composite index.
+ */
+async () => {
+  for await (const person of pipeline().cursor(["created_at", "person.id"])) {
     console.log(person satisfies Person);
   }
 };
