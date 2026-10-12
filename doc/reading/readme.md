@@ -18,6 +18,7 @@ type Person = Selectable<Database["person"]>;
 
 const query = db.selectFrom("person").selectAll();
 const pipeline = () => createQueryPipeline(query);
+const lazyPipeline = () => pipeline().lazy();
 
 /**
  * A pipeline is a "thenable" object which resolves
@@ -26,7 +27,7 @@ const pipeline = () => createQueryPipeline(query);
  * It calls the query builder `executeTakeFirst()` method.
  */
 async () => {
-  const person = await pipeline();
+  const person = await lazyPipeline();
   console.log(person satisfies Person | null);
 };
 
@@ -38,7 +39,7 @@ async () => {
  * It calls the query builder `executeTakeFirstOrThrow()` method.
  */
 async () => {
-  const person = await pipeline().throwIfNotFound();
+  const person = await lazyPipeline().throwIfNotFound();
   console.log(person satisfies Person);
 };
 
@@ -148,7 +149,7 @@ async (cursor: [Date, number]) => {
  * It calls the query builder `stream()` method.
  */
 async () => {
-  for await (const person of pipeline()) {
+  for await (const person of lazyPipeline()) {
     console.log(person satisfies Person);
   }
 };
@@ -169,6 +170,12 @@ async () => {
  */
 async () => {
   for await (const person of pipeline().cursor(["created_at", "person.id"])) {
+    console.log(person satisfies Person);
+  }
+};
+
+async () => {
+  for await (const person of pipeline().stream()) {
     console.log(person satisfies Person);
   }
 };

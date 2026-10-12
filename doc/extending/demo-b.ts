@@ -7,6 +7,7 @@ type Aliases = { fn: string; ln: string | null };
 type FullName = { full_name: string };
 
 const query = db.selectFrom("person").selectAll();
+const pipeline = () => createQueryPipeline(query).lazy();
 
 /**
  * `.extend()` allows making changes to the pipeline's query builder
@@ -14,7 +15,7 @@ const query = db.selectFrom("person").selectAll();
  * It returns a new pipeline with the new query builder.
  */
 async () => {
-  const person = await createQueryPipeline(query).extend((query) =>
+  const person = await pipeline().extend((query) =>
     query.select(["person.first_name as fn", "person.last_name as ln"]),
   );
   console.log(person satisfies (Person & Aliases) | null);
@@ -26,7 +27,7 @@ async () => {
  * It returns a new pipeline with the new transformer function.
  */
 async () => {
-  const person = await createQueryPipeline(query).map((data) => ({
+  const person = await pipeline().map((data) => ({
     ...data,
     full_name: `${data.first_name} ${data.last_name}`,
   }));
@@ -38,7 +39,7 @@ async () => {
  * into a single callback.
  */
 async () => {
-  const person = await createQueryPipeline(query).compose((pipeline) =>
+  const person = await pipeline().compose((pipeline) =>
     pipeline
       .extend((query) =>
         query.select(["person.first_name as fn", "person.last_name as ln"]),

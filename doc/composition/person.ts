@@ -1,4 +1,8 @@
-import { createQueryPipeline, QueryBuilderPipeline } from "kysely-pipeline";
+import {
+  createQueryPipeline,
+  QueryBuilderPipeline,
+  QueryPipelineState,
+} from "kysely-pipeline";
 import { Database, db } from "./db.js";
 import { PetPipeline } from "./pet.js";
 import { jsonArrayFrom } from "kysely/helpers/postgres";
@@ -6,9 +10,9 @@ import { jsonArrayFrom } from "kysely/helpers/postgres";
 export type PersonPipeline<
   O,
   T = O,
-  L extends boolean = false,
+  S extends QueryPipelineState = QueryPipelineState,
   TB extends keyof Database = "person",
-> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, L> : never;
+> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
 
 /**
  * Find records from the `person` table.
@@ -17,7 +21,7 @@ export type PersonPipeline<
  */
 export function findPerson() {
   const query = db.selectFrom("person").selectAll();
-  return createQueryPipeline(query).throwIfNotFound();
+  return createQueryPipeline(query).lazy().throwIfNotFound();
 }
 
 /**
@@ -27,10 +31,12 @@ export function findPerson() {
  * @param petPipeline PetPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addPetsToPerson<PetO, PetT>(
-  petPipeline: PetPipeline<PetO, PetT>,
+export function addPetsToPerson<PetO, PetT, PetS extends QueryPipelineState>(
+  petPipeline: PetPipeline<PetO, PetT, PetS>,
 ) {
-  return <O, T, L extends boolean>(personPipeline: PersonPipeline<O, T, L>) =>
+  return <O, T, S extends QueryPipelineState>(
+    personPipeline: PersonPipeline<O, T, S>,
+  ) =>
     personPipeline.extend((query) =>
       query.select(({ ref }) =>
         jsonArrayFrom(

@@ -46,9 +46,9 @@ the generic `QueryBuilderPipeline` type to be specific for the repository.
 export type PersonPipeline<
   O,
   T = O,
-  L extends boolean = false,
+  S extends QueryPipelineState = QueryPipelineState,
   TB extends keyof Database = "person",
-> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, L> : never;
+> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
 ```
 
 ```ts
@@ -56,16 +56,20 @@ export type PersonPipeline<
 export type PetPipeline<
   O,
   T = O,
-  L extends boolean = false,
+  S extends QueryPipelineState = QueryPipelineState,
   TB extends keyof Database = "pet",
-> = TB extends "pet" ? QueryBuilderPipeline<Database, TB, O, T, L> : never;
+> = TB extends "pet" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
 ```
 
 The generic parameters:
 
 - `O` is the shape that the `SELECT` database query returns, the same as the `O` in `SelectQueryBuilder<DB, TB, O>`
 - `T` is the shape returned by the pipeline's transformer (a function `(data: O) => T`) updated by the `.map()` pipeline modifier.
-- `L` is a boolean that tells the pipeline whether `await` will throw if no record is found; it determines with the results are nullable or not (`true` means non-null results).
+- `S` contains state information for the pipeline. `S["throwIfNotFound"]` is a
+  boolean that tells the pipeline whether `.first()` will throw if no record is
+  found; it determines whether the results are nullable or not (`true` means
+  non-null results). `S["lazy"]` is a boolean that tells the pipeline whether
+  lazy `await` or `for await..of` can be used on the pipeline directly.
 - `TB` is the database table key, the same as the `TB` in `SelectQueryBuilder<DB, TB, O>`
 
 The ternary condition (`TB extends "person"` and `TB extends "pet"`) is a guard
@@ -91,7 +95,7 @@ initialised with a basic "select all" query builder.
  */
 export function findPerson() {
   const query = db.selectFrom("person").selectAll();
-  return createQueryPipeline(query).throwIfNotFound();
+  return createQueryPipeline(query).lazy().throwIfNotFound();
 }
 ```
 
@@ -104,7 +108,7 @@ export function findPerson() {
  */
 export function findPet() {
   const query = db.selectFrom("pet").selectAll();
-  return createQueryPipeline(query).throwIfNotFound();
+  return createQueryPipeline(query).lazy().throwIfNotFound();
 }
 ```
 
@@ -139,6 +143,7 @@ We will encapsulate this in a pipeline compose factory function. The factory
 returns a function suitable to be passed to `.compose()`.
 
 ```ts
+// person.ts
 /**
  * Factory method for a pipeline composition callback to extend a `person`
  * query with a `pets` object containing an array of related `pet` records.
@@ -146,10 +151,12 @@ returns a function suitable to be passed to `.compose()`.
  * @param petPipeline PetPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addPetsToPerson<PetO, PetT>(
-  petPipeline: PetPipeline<PetO, PetT>,
+export function addPetsToPerson<PetO, PetT, PetS extends QueryPipelineState>(
+  petPipeline: PetPipeline<PetO, PetT, PetS>,
 ) {
-  return <O, T, L extends boolean>(personPipeline: PersonPipeline<O, T, L>) =>
+  return <O, T, S extends QueryPipelineState>(
+    personPipeline: PersonPipeline<O, T, S>,
+  ) =>
     personPipeline.extend((query) =>
       query.select(({ ref }) =>
         jsonArrayFrom(
@@ -167,11 +174,11 @@ export function addPetsToPerson<PetO, PetT>(
 > it's up to the caller to decide what shape of `Pet` to return and what order
 > the pets will be listed in.
 
-The factory function (`addPetsToPerson()`) accepts generics `<PetO, PetT>` which
-are inferred by the actual pipeline instance that is passed (`petPipeline`).
-This makes the shape of pets up to the caller.
+The factory function (`addPetsToPerson()`) accepts generics `<PetO, PetT, PetS>`
+which are inferred by the actual pipeline instance that is passed
+(`petPipeline`). This makes the shape of pets up to the caller.
 
-The returned function accepts generics `<O, T, L>` which are inferred by the
+The returned function accepts generics `<O, T, S>` which are inferred by the
 pipeline being updated (`personPipeline`). This makes the factory function
 versatile, so it can be used with any shape of `Person`, and query pipelines
 with and without the `throwIfNotFound` flag set.

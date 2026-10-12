@@ -2,6 +2,7 @@ import {
   createQueryPipeline,
   JsonFrom,
   QueryBuilderPipeline,
+  QueryPipelineState,
 } from "kysely-pipeline";
 import { Database, db } from "./db.js";
 import { personFromJson, PersonPipeline } from "./person.js";
@@ -11,9 +12,9 @@ import { Selectable } from "kysely";
 export type PetPipeline<
   O,
   T = O,
-  L extends boolean = false,
+  S extends QueryPipelineState = QueryPipelineState,
   TB extends keyof Database = "pet",
-> = TB extends "pet" ? QueryBuilderPipeline<Database, TB, O, T, L> : never;
+> = TB extends "pet" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
 
 type Pet = Selectable<Database["pet"]>;
 
@@ -24,7 +25,7 @@ type Pet = Selectable<Database["pet"]>;
  */
 export function findPet() {
   const query = db.selectFrom("pet").selectAll();
-  return createQueryPipeline(query).throwIfNotFound();
+  return createQueryPipeline(query).lazy().throwIfNotFound();
 }
 
 /**
@@ -48,10 +49,12 @@ export function petFromJson<T extends Partial<JsonFrom<Pet>>>(json: T) {
  * @param ownerPipeline PersonPipeline
  * @returns query PetPipeline with 'owner' property
  */
-export function addOwnerToPet<PersonO, PersonT>(
-  ownerPipeline: PersonPipeline<PersonO, PersonT>,
+export function addOwnerToPet<PersonO, T, S extends QueryPipelineState>(
+  ownerPipeline: PersonPipeline<PersonO, T, S>,
 ) {
-  return <O, T, L extends boolean>(petPipeline: PetPipeline<O, T, L>) =>
+  return <O, T, S extends QueryPipelineState>(
+    petPipeline: PetPipeline<O, T, S>,
+  ) =>
     petPipeline
       .extend((query) =>
         query.select(({ ref }) =>

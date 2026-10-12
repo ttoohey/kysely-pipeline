@@ -1,7 +1,8 @@
 import { SelectQueryBuilder } from "kysely";
 import { asynciterable } from "./asynciterable.js";
+import { stream } from "./stream.js";
 
-export function streamable<
+export function lazyStream<
   TObject extends object,
   DB,
   TB extends keyof DB,
@@ -12,9 +13,8 @@ export function streamable<
   query: SelectQueryBuilder<DB, TB, O>,
   transformer: (data: O) => T,
 ): TObject & AsyncIterable<T> {
-  return asynciterable(object, async function* () {
-    for await (const data of query.stream()) {
-      yield transformer(data);
-    }
-  });
+  return asynciterable(
+    object,
+    stream(query, transformer) as () => AsyncIterableIterator<T>,
+  );
 }

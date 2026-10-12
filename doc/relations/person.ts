@@ -4,6 +4,7 @@ import {
   createQueryPipeline,
   JsonFrom,
   QueryBuilderPipeline,
+  QueryPipelineState,
 } from "kysely-pipeline";
 import { Database, db } from "./db.js";
 import { petFromJson, PetPipeline } from "./pet.js";
@@ -11,9 +12,9 @@ import { petFromJson, PetPipeline } from "./pet.js";
 export type PersonPipeline<
   O,
   T = O,
-  L extends boolean = false,
+  S extends QueryPipelineState = QueryPipelineState,
   TB extends keyof Database = "person",
-> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, L> : never;
+> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
 
 export type Person = Selectable<Database["person"]>;
 
@@ -24,7 +25,7 @@ export type Person = Selectable<Database["person"]>;
  */
 export function findPerson() {
   const query = db.selectFrom("person").selectAll();
-  return createQueryPipeline(query).throwIfNotFound();
+  return createQueryPipeline(query).lazy().throwIfNotFound();
 }
 
 /**
@@ -50,10 +51,12 @@ export function personFromJson<T extends Partial<JsonFrom<Person>>>(json: T) {
  * @param petPipeline PetPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addPetsToPerson<PetO, PetT>(
-  petPipeline: PetPipeline<PetO, PetT>,
+export function addPetsToPerson<PetO, T, S extends QueryPipelineState>(
+  petPipeline: PetPipeline<PetO, T, S>,
 ) {
-  return <O, T, L extends boolean>(personPipeline: PersonPipeline<O, T, L>) =>
+  return <O, T, S extends QueryPipelineState>(
+    personPipeline: PersonPipeline<O, T, S>,
+  ) =>
     personPipeline
       .extend((query) =>
         query.select(({ ref }) =>
@@ -77,10 +80,14 @@ export function addPetsToPerson<PetO, PetT>(
  * @param motherPipeline PersonPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addMotherToPerson<MotherO extends { id: number }, MotherT>(
-  motherPipeline: PersonPipeline<MotherO, MotherT>,
-) {
-  return <O, T, L extends boolean>(personPipelne: PersonPipeline<O, T, L>) =>
+export function addMotherToPerson<
+  MotherO extends { id: number },
+  T,
+  S extends QueryPipelineState,
+>(motherPipeline: PersonPipeline<MotherO, T, S>) {
+  return <O, T, S extends QueryPipelineState>(
+    personPipelne: PersonPipeline<O, T, S>,
+  ) =>
     personPipelne
       .extend((query) =>
         query.select((eb) =>

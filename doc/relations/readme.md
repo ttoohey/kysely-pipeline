@@ -60,10 +60,12 @@ things:
  * @param petPipeline PetPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addPetsToPerson<PetO, PetT>(
-  petPipeline: PetPipeline<PetO, PetT>,
+export function addPetsToPerson<PetO, T, S extends QueryPipelineState>(
+  petPipeline: PetPipeline<PetO, T, S>,
 ) {
-  return <O, T, L extends boolean>(personPipeline: PersonPipeline<O, T, L>) =>
+  return <O, T, S extends QueryPipelineState>(
+    personPipeline: PersonPipeline<O, T, S>,
+  ) =>
     personPipeline
       .extend((query) =>
         query.select(({ ref }) =>
@@ -119,10 +121,12 @@ to `person` via the `pet.owner_id` field.
  * @param ownerPipeline PersonPipeline
  * @returns query PetPipeline with 'owner' property
  */
-export function addOwnerToPet<PersonO, PersonT>(
-  ownerPipeline: PersonPipeline<PersonO, PersonT>,
+export function addOwnerToPet<PersonO, T, S extends QueryPipelineState>(
+  ownerPipeline: PersonPipeline<PersonO, T, S>,
 ) {
-  return <O, T, L extends boolean>(petPipeline: PetPipeline<O, T, L>) =>
+  return <O, T, S extends QueryPipelineState>(
+    petPipeline: PetPipeline<O, T, S>,
+  ) =>
     petPipeline
       .extend((query) =>
         query.select(({ ref }) =>
@@ -188,10 +192,14 @@ relation there's a couple of nuances.
  * @param motherPipeline PersonPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addMotherToPerson<MotherO extends { id: number }, MotherT>(
-  motherPipeline: PersonPipeline<MotherO, MotherT>,
-) {
-  return <O, T, L extends boolean>(personPipelne: PersonPipeline<O, T, L>) =>
+export function addMotherToPerson<
+  MotherO extends { id: number },
+  T,
+  S extends QueryPipelineState,
+>(motherPipeline: PersonPipeline<MotherO, T, S>) {
+  return <O, T, S extends QueryPipelineState>(
+    personPipelne: PersonPipeline<O, T, S>,
+  ) =>
     personPipelne
       .extend((query) =>
         query.select((eb) =>
