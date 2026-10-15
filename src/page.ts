@@ -1,5 +1,10 @@
 import { SelectQueryBuilder } from "kysely";
-import { CountedMeta, OffsetMeta, PaginatedResult } from "./pagination.js";
+import {
+  CountedMeta,
+  OffsetMeta,
+  PaginatedResult,
+  wrapInCount,
+} from "./pagination.js";
 
 type PageOptions<TCounting extends boolean> = {
   counting: TCounting;
@@ -54,11 +59,9 @@ export function page<DB, TB extends keyof DB, O, T>(
     const countQuery = query
       .clearLimit()
       .clearOffset()
-      .clearSelect()
-      .clearGroupBy()
       .clearOrderBy()
-      .select((eb) => eb.fn.countAll().as("total"))
-      .$castTo<{ total: bigint }>();
+      .withPlugin(wrapInCount)
+      .$castTo<{ total: bigint | string }>();
     const itemsQuery = query
       .clearLimit()
       .clearOffset()

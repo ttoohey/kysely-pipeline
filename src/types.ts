@@ -4,7 +4,6 @@ import { PageFn } from "./page.js";
 import { CursorFn } from "./cursor.js";
 import { FirstFn } from "./first.js";
 import { StreamFn } from "./stream.js";
-import { createQueryPipeline } from "./createQueryPipeline.js";
 
 export type JsonFrom<T> = {
   [P in keyof T]: T[P] extends boolean | number | [] | object
@@ -91,10 +90,10 @@ export interface Pipeline<
   stream: StreamFn<T>;
   /**
    * Fetch records as an array
-   * @param offset
    * @param limit
+   * @param offset
    */
-  list(offset?: number, limit?: number): Promise<T[]>;
+  list(limit?: number, offset?: number): Promise<T[]>;
   /**
    * Offset pagination
    */

@@ -3,31 +3,33 @@ import {
   SelectQueryBuilder,
   StringReference,
 } from "kysely";
-import { buildCompositeOrderBy, buildCompositeWhere } from "./keyset.js";
+import { buildCompositeOrderBy, buildCompositeWhere, Nulls } from "./keyset.js";
 import { Direction, ExtractTupleTypes } from "./pagination.js";
 
-type CursorOptions<TCursor, TDirection> = {
+type CursorOptions<TCursor> = {
   cursor?: TCursor;
-  direction?: TDirection;
   batchSize?: number;
-};
+} & (TCursor extends unknown[]
+  ? {
+      direction?: Direction | (Direction[] & { length: TCursor["length"] });
+      nulls?: Nulls | (Nulls[] & { length: TCursor["length"] });
+    }
+  : { direction?: Direction; nulls?: Nulls });
 
 type CompositeKeyFn<DB, TB extends keyof DB, T> = <
   const TColumn extends readonly StringReference<DB, TB>[],
   TCursor extends ExtractTupleTypes<DB, TB, TColumn>,
-  TDirection extends Direction | Direction[],
 >(
   column: TColumn,
-  options?: CursorOptions<TCursor, TDirection>,
+  options?: CursorOptions<TCursor>,
 ) => AsyncGenerator<T>;
 
 type SingleKeyFn<DB, TB extends keyof DB, T> = <
   const TColumn extends StringReference<DB, TB>,
   TCursor extends ExtractTypeFromReferenceExpression<DB, TB, TColumn>,
-  TDirection extends Direction,
 >(
   column: TColumn,
-  options?: CursorOptions<TCursor, TDirection>,
+  options?: CursorOptions<TCursor>,
 ) => AsyncGenerator<T>;
 
 export type CursorFn<DB, TB extends keyof DB, T> = SingleKeyFn<DB, TB, T> &
@@ -43,17 +45,9 @@ export function cursor<DB, TB extends keyof DB, O, T>(
     TCursor extends (TColumn extends unknown[]
       ? ExtractTupleTypes<DB, TB, TColumn>
       : ExtractTypeFromReferenceExpression<DB, TB, TColumn>),
-    TDirection extends (TColumn extends unknown[]
-      ? Direction | Direction[]
-      : Direction),
-  >(
-    column: TColumn,
-    {
-      cursor,
-      direction,
-      batchSize = 1_000,
-    }: CursorOptions<TCursor, TDirection> = {},
-  ) {
+  >(column: TColumn, options?: CursorOptions<TCursor>) {
+    let cursor = options?.cursor;
+    const { direction, batchSize = 1_000 } = options ?? {};
     const isComposite = Array.isArray(column);
     const columns = isComposite
       ? (column as readonly StringReference<DB, TB>[])
@@ -61,6 +55,9 @@ export function cursor<DB, TB extends keyof DB, O, T>(
     const directions: Direction[] = Array.isArray(direction)
       ? direction
       : Array(columns.length).fill(direction === "desc" ? "desc" : "asc");
+    const nulls: Nulls[] = Array.isArray(options?.nulls)
+      ? options.nulls
+      : Array(columns.length).fill(options?.nulls ?? "never");
 
     do {
       const items = await query
@@ -71,26 +68,26 @@ export function cursor<DB, TB extends keyof DB, O, T>(
         .$if(isComposite, (q) => {
           const columns = column as readonly StringReference<DB, TB>[];
           return q
-            .$call(buildCompositeOrderBy(columns, directions))
-            .$if(Boolean(cursor), (q) => {
+            .$call(buildCompositeOrderBy(columns, directions, nulls))
+            .$if(cursor !== undefined, (q) => {
               const compCursor = cursor! as ExtractTupleTypes<
                 DB,
                 TB,
                 unknown[]
               >;
               return q.where((eb) =>
-                buildCompositeWhere(eb, columns, directions, compCursor),
+                buildCompositeWhere(eb, columns, directions, nulls, compCursor),
               );
             });
         })
         .$if(!isComposite, (q) => {
           const columns = [column as StringReference<DB, TB>] as const;
           return q
-            .$call(buildCompositeOrderBy(columns, directions))
-            .$if(Boolean(cursor), (q) => {
+            .$call(buildCompositeOrderBy(columns, directions, nulls))
+            .$if(cursor !== undefined, (q) => {
               const compCursor = [cursor!];
               return q.where((eb) =>
-                buildCompositeWhere(eb, columns, directions, compCursor),
+                buildCompositeWhere(eb, columns, directions, nulls, compCursor),
               );
             });
         })

@@ -3,13 +3,14 @@ import {
   SelectQueryBuilder,
   StringReference,
 } from "kysely";
-import { buildCompositeOrderBy, buildCompositeWhere } from "./keyset.js";
+import { buildCompositeOrderBy, buildCompositeWhere, Nulls } from "./keyset.js";
 import {
   CountedMeta,
   Direction,
   ExtractTupleTypes,
   KeysetMeta,
   PaginatedResult,
+  wrapInCount,
 } from "./pagination.js";
 
 type SeekOptions<TCursor, C extends boolean | undefined> = (C extends boolean
@@ -30,8 +31,9 @@ type SeekOptions<TCursor, C extends boolean | undefined> = (C extends boolean
     (TCursor extends unknown[]
       ? {
           direction?: Direction | (Direction[] & { length: TCursor["length"] });
+          nulls?: Nulls | (Nulls[] & { length: TCursor["length"] });
         }
-      : { direction?: Direction }));
+      : { direction?: Direction; nulls?: Nulls }));
 
 type CompositeKeyFn<DB, TB extends keyof DB, T> = (<
   const TColumn extends readonly StringReference<DB, TB>[],
@@ -66,6 +68,7 @@ type SingleKeyFn<DB, TB extends keyof DB, T> = (<
 export type SeekFn<DB, TB extends keyof DB, T> = SingleKeyFn<DB, TB, T> &
   CompositeKeyFn<DB, TB, T>;
 
+const keyAlias = (i: number) => `__pipeline_cursor_${i}`;
 export function seek<DB, TB extends keyof DB, O, T>(
   query: SelectQueryBuilder<DB, TB, O>,
   transformer: (data: O) => T,
@@ -89,17 +92,28 @@ export function seek<DB, TB extends keyof DB, O, T>(
       : Array(columns.length).fill(
           (options?.direction === "desc") === isReverse ? "asc" : "desc",
         );
+    const nulls: Nulls[] = Array.isArray(options.nulls)
+      ? options.nulls
+      : Array(columns.length).fill(options.nulls ?? "never");
+
+    const cursorOf = (row: Record<string, unknown>) =>
+      isComposite ? columns.map((_, i) => row[keyAlias(i)]) : row[keyAlias(0)];
+    const stripKeys = (row: Record<string, unknown>) => {
+      const out = { ...row };
+      columns.forEach((_, i) => delete out[keyAlias(i)]);
+      return out as O;
+    };
 
     const itemsQuery = query
       .clearLimit()
       .clearOffset()
       .clearOrderBy()
       .limit(limit + 1)
-      .select(columns)
+      .select((eb) => columns.map((col, i) => eb.ref(col).as(keyAlias(i))))
       .$if(isComposite, (q) => {
         const columns = column as readonly StringReference<DB, TB>[];
         return q
-          .$call(buildCompositeOrderBy(columns, directions))
+          .$call(buildCompositeOrderBy(columns, directions, nulls))
           .$if(Boolean(options.cursor), (q) => {
             const cursor = options.cursor! as ExtractTupleTypes<
               DB,
@@ -107,23 +121,23 @@ export function seek<DB, TB extends keyof DB, O, T>(
               unknown[]
             >;
             return q.where((eb) =>
-              buildCompositeWhere(eb, columns, directions, cursor),
+              buildCompositeWhere(eb, columns, directions, nulls, cursor),
             );
           });
       })
       .$if(!isComposite, (q) => {
         const columns = [column as StringReference<DB, TB>] as const;
         return q
-          .$call(buildCompositeOrderBy(columns, directions))
+          .$call(buildCompositeOrderBy(columns, directions, nulls))
           .$if(Boolean(options.cursor), (q) => {
             const cursor = [options.cursor!];
             return q.where((eb) =>
-              buildCompositeWhere(eb, columns, directions, cursor),
+              buildCompositeWhere(eb, columns, directions, nulls, cursor),
             );
           });
       });
 
-    const getMeta = (itemsPlusOne: O[]) => {
+    const getMeta = (itemsPlusOne: Record<string, unknown>[]) => {
       const items = itemsPlusOne.slice(0, limit);
       if (isReverse) {
         items.reverse();
@@ -136,16 +150,8 @@ export function seek<DB, TB extends keyof DB, O, T>(
         (isReverse && itemsPlusOne.length > limit);
       const firstRow = items.at(0);
       const lastRow = items.at(-1);
-      const fieldNames = columns.map(
-        (column) => column.split(".").at(-1) as keyof O,
-      );
-
-      const first = isComposite
-        ? fieldNames.map((fieldName) => firstRow?.[fieldName] ?? null)
-        : (firstRow?.[fieldNames[0]] ?? null);
-      const last = isComposite
-        ? fieldNames.map((fieldName) => lastRow?.[fieldName] ?? null)
-        : (lastRow?.[fieldNames[0]] ?? null);
+      const first = firstRow ? cursorOf(firstRow) : null;
+      const last = lastRow ? cursorOf(lastRow) : null;
       const nextCursor = hasNext ? last : null;
       const previousCursor = hasPrevious ? first : null;
       return [
@@ -163,18 +169,16 @@ export function seek<DB, TB extends keyof DB, O, T>(
       const itemsPlusOne = await itemsQuery.execute();
       const [items, meta] = getMeta(itemsPlusOne);
       return {
-        items: items.map(transformer),
+        items: items.map(stripKeys).map(transformer),
         meta,
       };
     }
     const countQuery = query
       .clearLimit()
       .clearOffset()
-      .clearSelect()
-      .clearGroupBy()
       .clearOrderBy()
-      .select((eb) => eb.fn.countAll().as("total"))
-      .$castTo<{ total: bigint }>();
+      .withPlugin(wrapInCount)
+      .$castTo<{ total: bigint | string }>();
     const [count, itemsPlusOne] = await Promise.all([
       countQuery.executeTakeFirstOrThrow(),
       itemsQuery.execute(),
@@ -184,7 +188,7 @@ export function seek<DB, TB extends keyof DB, O, T>(
     const [items, meta] = getMeta(itemsPlusOne);
 
     return {
-      items: items.map(transformer),
+      items: items.map(stripKeys).map(transformer),
       meta: {
         ...meta,
         totalItems,

@@ -4,23 +4,20 @@ export function thenable<TObject extends object, TResult>(
 ) {
   return Object.defineProperties(object, {
     then: {
-      get() {
-        const p = asPromise();
-        return p.then.bind(p);
+      value(onFulfilled: any, onRejected: any) {
+        return asPromise().then(onFulfilled, onRejected);
       },
       configurable: true,
     },
     catch: {
-      get() {
-        const p = asPromise();
-        return p.catch.bind(p);
+      value(onRejected: any) {
+        return asPromise().catch(onRejected);
       },
       configurable: true,
     },
     finally: {
-      get() {
-        const p = asPromise();
-        return p.finally.bind(p);
+      value(onFinally: any) {
+        return asPromise().finally(onFinally);
       },
       configurable: true,
     },

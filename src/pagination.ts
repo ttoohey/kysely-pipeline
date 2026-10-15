@@ -1,4 +1,12 @@
-import { ExtractTypeFromReferenceExpression } from "kysely";
+import {
+  AliasNode,
+  ExtractTypeFromReferenceExpression,
+  IdentifierNode,
+  KyselyPlugin,
+  SelectionNode,
+  SelectQueryNode,
+  sql,
+} from "kysely";
 
 type Prettify<T> = {
   [K in keyof T]: T[K];
@@ -56,3 +64,20 @@ export type KeysetMeta<TCursor> = (
         previousCursor: null;
       }
   );
+
+export const wrapInCount: KyselyPlugin = {
+  transformQuery({ node }) {
+    if (!SelectQueryNode.is(node)) {
+      return node;
+    }
+    return SelectQueryNode.cloneWithSelections(
+      SelectQueryNode.createFrom([
+        AliasNode.create(node, IdentifierNode.create("t")),
+      ]),
+      [SelectionNode.create(sql`count(*)`.as("total").toOperationNode())],
+    );
+  },
+  async transformResult({ result }) {
+    return result;
+  },
+};

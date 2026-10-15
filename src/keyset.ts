@@ -1,66 +1,102 @@
-import { ExpressionBuilder, SelectQueryBuilder } from "kysely";
+import {
+  Expression,
+  ExpressionBuilder,
+  SelectQueryBuilder,
+  SqlBool,
+} from "kysely";
+import { Direction } from "./pagination.js";
+
+export type Nulls = "first" | "last" | "never";
+
+function strictlyAfter(
+  eb: ExpressionBuilder<any, any>,
+  column: string,
+  direction: Direction,
+  nulls: Nulls,
+  value: unknown,
+): Expression<SqlBool> | null {
+  if (nulls === "never") {
+    return eb(column, direction === "asc" ? ">" : "<", value);
+  }
+  if (value === null) {
+    return nulls === "last" ? null : eb(column, "is not", null);
+  }
+  const beyond = eb(column, direction === "asc" ? ">" : "<", value);
+  return nulls === "last" ? eb.or([beyond, eb(column, "is", null)]) : beyond;
+}
+
+function equalTo(
+  eb: ExpressionBuilder<any, any>,
+  column: string,
+  value: unknown,
+) {
+  return value === null ? eb(column, "is", null) : eb(column, "=", value);
+}
 
 export function buildCompositeWhere(
   eb: ExpressionBuilder<any, any>,
   columns: readonly string[],
-  directions: readonly ("asc" | "desc")[],
-  cursorValues: any[],
-  index = 0,
-): any {
-  const col = columns[index];
-  const dir = directions[index];
-  const val = cursorValues[index];
-  const isLast = index === columns.length - 1;
-
-  const op = dir === "asc" ? ">" : "<";
-
-  let progressiveCondition;
-  if (val === null) {
-    progressiveCondition = dir === "asc" ? eb(col, "is not", null) : null;
-  } else {
-    progressiveCondition =
-      dir === "asc"
-        ? eb.or([
-            eb(col, ">", val),
-            dir === "asc" ? eb(col, "is", null) : eb(col, "is not", null),
-          ])
-        : eb(col, "<", val);
-    progressiveCondition = eb(col, op, val);
+  directions: readonly Direction[],
+  nulls: readonly Nulls[],
+  cursor: readonly unknown[],
+): Expression<SqlBool> {
+  columns.forEach((column, i) => {
+    if (nulls[i] === "never" && cursor[i] === null) {
+      throw new Error(`Cursor value for non-nullable column ${column} is null`);
+    }
+  });
+  if (
+    nulls.every((n) => n === "never") &&
+    directions.every((d) => d === directions[0])
+  ) {
+    const op = directions[0] === "asc" ? ">" : "<";
+    return columns.length === 1
+      ? eb(columns[0], op, cursor[0])
+      : eb(
+          eb.refTuple(...(columns as [string, string])),
+          op,
+          eb.tuple(...(cursor as [string, string])),
+        );
   }
 
-  if (isLast) {
-    return progressiveCondition || eb.val(false);
+  let condition: Expression<SqlBool> | null = null;
+  for (let i = columns.length - 1; i >= 0; i--) {
+    const after = strictlyAfter(
+      eb,
+      columns[i],
+      directions[i],
+      nulls[i],
+      cursor[i],
+    );
+    const tie: Expression<SqlBool> | null =
+      condition && eb.and([equalTo(eb, columns[i], cursor[i]), condition]);
+
+    const parts: Expression<SqlBool>[] = [after, tie].filter(
+      (part) => part !== null,
+    );
+    condition =
+      parts.length === 0 ? null : parts.length === 1 ? parts[0] : eb.or(parts);
   }
-
-  const equalityCondition =
-    val === null ? eb(col, "is", null) : eb(col, "=", val);
-
-  const nextColumnConditions = buildCompositeWhere(
-    eb,
-    columns,
-    directions,
-    cursorValues,
-    index + 1,
-  );
-
-  if (progressiveCondition) {
-    return eb.or([
-      progressiveCondition,
-      eb.and([equalityCondition, nextColumnConditions]),
-    ]);
-  }
-
-  return eb.and([equalityCondition, nextColumnConditions]);
+  return condition ?? eb.lit(false);
 }
 
 export function buildCompositeOrderBy(
   columns: readonly any[],
-  directions: readonly any[],
+  directions: readonly Direction[],
+  nulls: readonly Nulls[],
 ) {
   return <DB, TB extends keyof DB, O>(query: SelectQueryBuilder<DB, TB, O>) =>
     columns.reduce(
-      (q: SelectQueryBuilder<DB, TB, O>, col, index) =>
-        q.orderBy(col, directions[index]),
+      (q: SelectQueryBuilder<DB, TB, O>, column, i) =>
+        q.orderBy(column, (ob) => {
+          const ordered = directions[i] === "asc" ? ob.asc() : ob.desc();
+          if (nulls[i] === "never") {
+            return ordered;
+          }
+          return nulls[i] === "first"
+            ? ordered.nullsFirst()
+            : ordered.nullsLast();
+        }),
       query,
     );
 }
