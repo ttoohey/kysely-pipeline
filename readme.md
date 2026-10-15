@@ -49,33 +49,32 @@ pet.owner.mother satisfies Person;
 _A not-strictly accurate representation of the query builder pipeline_
 
 ```ts
-type QueryBuilderPipeline =
-  // await to fetch a single result
-  Promise<Result | null> &
-    // for await to fetch streaming results
-    AsyncIterable<Result> & {
-      // other "result" getting strategies
-      list(limit?: number, offset?: number): Promise<Result[]>;
-      paginate(
-        page: number,
-        pageSize: number,
-        { counting: boolean = true },
-      ): Promise<{ items: Result[]; meta: PaginationMeta }>;
-      cursor(index: StringReference): AsyncIterable<Result>;
-    } & {
-      // pipeline modifying methods
-      extend(func): QueryBuilderPipeline;
-      map(func): QueryBuilderPipeline;
-      compose(func): QueryBuilderPipeline;
-      throwIfNotFound(): QueryBuilderPipeline;
-    } & {
-      // use the pipeline's query build and transformer directly
-      query: SelectQueryBuilder;
-      transform(data): Result;
-    };
+type Pipeline = {
+  // terminal methods to read query response
+  first(): Promise<Result>;
+  list(limit?: number, offset?: number): Promise<Result[]>;
+  paginate(
+    page: number,
+    pageSize: number,
+    { counting: boolean = true },
+  ): Promise<{ items: Result[]; meta: PaginationMeta }>;
+  stream(): AsyncIterable<Result>;
+  cursor(index: StringReference): AsyncIterable<Result>;
+} & {
+  // pipeline modifying methods
+  extend(func): Pipeline;
+  map(func): Pipeline;
+  compose(func): Pipeline;
+  throwIfNotFound(): Pipeline;
+  lazy(): Pipeline;
+} & {
+  // use the pipeline's query build and transformer directly
+  query: SelectQueryBuilder;
+  transform(data): Result;
+};
 ```
 
-## JsonFrom
+## type JsonFrom
 
 A utility type to cast a object to a JSON-ified version. Useful when an object
 comes from `jsonArrayFrom()` or `jsonObjectFrom()` queries.
@@ -86,10 +85,10 @@ comes from `jsonArrayFrom()` or `jsonObjectFrom()` queries.
 type JsonFrom<T>
 ```
 
-## createQueryPipeline
+## pipeline()
 
 ```ts
-function createQueryPipeline(query: SelectQueryBuilder): QueryBuilderPipeline;
+function pipeline(query: SelectQueryBuilder): Pipeline;
 ```
 
 This function is typically used in repository 'find' function.
@@ -97,14 +96,14 @@ This function is typically used in repository 'find' function.
 ```ts
 function findPerson() {
   const query = db.selectFrom("person").selectAll();
-  return createQueryPipeline(query);
+  return pipeline(query).lazy();
 }
 ```
 
 The `findPerson()` function returns a Pipeline which means the consumer may
 extend/compose the query further, and can choose which of the reading strategies
 to use, from simply awaiting to get the first result, or streaming to get all
-results, or using `.paginate()` to get a page of results.
+results, or using `.page()` to get a page of results.
 
 There's no need for separate `findPersonById()` and `findPeople()` functions.
 Modify `findPerson()` to implement the `WHERE` logic, and let the consumer worry
@@ -118,7 +117,7 @@ function findPerson(criteria?: number | object) {
     .$if(typeof criteria === "number", (q) =>
       q.where("id", "=", criteria as number),
     );
-  return createQueryPipeline(query);
+  return pipeline(query).lazy();
 }
 ```
 

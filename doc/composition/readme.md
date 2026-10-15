@@ -46,9 +46,9 @@ the generic `QueryBuilderPipeline` type to be specific for the repository.
 export type PersonPipeline<
   O,
   T = O,
-  S extends QueryPipelineState = QueryPipelineState,
+  S extends PipelineState = PipelineState,
   TB extends keyof Database = "person",
-> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
+> = TB extends "person" ? Pipeline<Database, TB, O, T, S> : never;
 ```
 
 ```ts
@@ -56,9 +56,9 @@ export type PersonPipeline<
 export type PetPipeline<
   O,
   T = O,
-  S extends QueryPipelineState = QueryPipelineState,
+  S extends PipelineState = PipelineState,
   TB extends keyof Database = "pet",
-> = TB extends "pet" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
+> = TB extends "pet" ? Pipeline<Database, TB, O, T, S> : never;
 ```
 
 The generic parameters:
@@ -95,7 +95,7 @@ initialised with a basic "select all" query builder.
  */
 export function findPerson() {
   const query = db.selectFrom("person").selectAll();
-  return createQueryPipeline(query).lazy().throwIfNotFound();
+  return pipeline(query).lazy().throwIfNotFound();
 }
 ```
 
@@ -108,7 +108,7 @@ export function findPerson() {
  */
 export function findPet() {
   const query = db.selectFrom("pet").selectAll();
-  return createQueryPipeline(query).lazy().throwIfNotFound();
+  return pipeline(query).throwIfNotFound();
 }
 ```
 
@@ -151,10 +151,10 @@ returns a function suitable to be passed to `.compose()`.
  * @param petPipeline PetPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addPetsToPerson<PetO, PetT, PetS extends QueryPipelineState>(
-  petPipeline: PetPipeline<PetO, PetT, PetS>,
+export function addPetsToPerson<O, T, S extends PipelineState>(
+  petPipeline: PetPipeline<O, T, S>,
 ) {
-  return <O, T, S extends QueryPipelineState>(
+  return <O, T, S extends PipelineState>(
     personPipeline: PersonPipeline<O, T, S>,
   ) =>
     personPipeline.extend((query) =>
@@ -174,16 +174,16 @@ export function addPetsToPerson<PetO, PetT, PetS extends QueryPipelineState>(
 > it's up to the caller to decide what shape of `Pet` to return and what order
 > the pets will be listed in.
 
-The factory function (`addPetsToPerson()`) accepts generics `<PetO, PetT, PetS>`
+The factory function (`addPetsToPerson()`) accepts generics `<O, T, S>`
 which are inferred by the actual pipeline instance that is passed
 (`petPipeline`). This makes the shape of pets up to the caller.
 
 The returned function accepts generics `<O, T, S>` which are inferred by the
 pipeline being updated (`personPipeline`). This makes the factory function
 versatile, so it can be used with any shape of `Person`, and query pipelines
-with and without the `throwIfNotFound` flag set.
+with and without the `throwIfNotFound` or `lazy` flags set.
 
 The `jsonArrayFrom()` call is passed `petPipeline.query`, rather than creating
 a query builder from scratch using `db.selectFrom("pet")`. The `.query` accessor
 on pipeline objects returns the pipeline's query builder. It's a normal
-`SelectQueryBuilder<Database, "pet", PetO>` shaped query builder.
+`SelectQueryBuilder<Database, "pet", O>` shaped query builder.

@@ -1,20 +1,15 @@
 import { Selectable } from "kysely";
 import { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/postgres";
-import {
-  createQueryPipeline,
-  JsonFrom,
-  QueryBuilderPipeline,
-  QueryPipelineState,
-} from "kysely-pipeline";
+import { pipeline, JsonFrom, Pipeline, PipelineState } from "kysely-pipeline";
 import { Database, db } from "./db.js";
 import { petFromJson, PetPipeline } from "./pet.js";
 
 export type PersonPipeline<
   O,
   T = O,
-  S extends QueryPipelineState = QueryPipelineState,
+  S extends PipelineState = PipelineState,
   TB extends keyof Database = "person",
-> = TB extends "person" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
+> = TB extends "person" ? Pipeline<Database, TB, O, T, S> : never;
 
 export type Person = Selectable<Database["person"]>;
 
@@ -25,7 +20,7 @@ export type Person = Selectable<Database["person"]>;
  */
 export function findPerson() {
   const query = db.selectFrom("person").selectAll();
-  return createQueryPipeline(query).lazy().throwIfNotFound();
+  return pipeline(query).lazy().throwIfNotFound();
 }
 
 /**
@@ -51,10 +46,10 @@ export function personFromJson<T extends Partial<JsonFrom<Person>>>(json: T) {
  * @param petPipeline PetPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addPetsToPerson<PetO, T, S extends QueryPipelineState>(
+export function addPetsToPerson<PetO, T, S extends PipelineState>(
   petPipeline: PetPipeline<PetO, T, S>,
 ) {
-  return <O, T, S extends QueryPipelineState>(
+  return <O, T, S extends PipelineState>(
     personPipeline: PersonPipeline<O, T, S>,
   ) =>
     personPipeline
@@ -83,9 +78,9 @@ export function addPetsToPerson<PetO, T, S extends QueryPipelineState>(
 export function addMotherToPerson<
   MotherO extends { id: number },
   T,
-  S extends QueryPipelineState,
+  S extends PipelineState,
 >(motherPipeline: PersonPipeline<MotherO, T, S>) {
-  return <O, T, S extends QueryPipelineState>(
+  return <O, T, S extends PipelineState>(
     personPipelne: PersonPipeline<O, T, S>,
   ) =>
     personPipelne

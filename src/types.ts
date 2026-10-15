@@ -15,7 +15,7 @@ export type JsonFrom<T> = {
 
 export type Merge<O, T, N> = N & Omit<T, Exclude<keyof O, keyof N>>;
 
-export type QueryPipelineState<
+export type PipelineState<
   TThrowIfNotFound extends boolean = boolean,
   TLazy extends boolean = boolean,
 > = {
@@ -23,12 +23,12 @@ export type QueryPipelineState<
   lazy: TLazy;
 };
 
-export type QueryBuilderPipeline<
+export type Pipeline<
   DB,
   TB extends keyof DB,
   O,
   T,
-  S extends QueryPipelineState,
+  S extends PipelineState,
 > = S["lazy"] extends true
   ? Promise<
       S["throwIfNotFound"] extends true
@@ -38,17 +38,17 @@ export type QueryBuilderPipeline<
           : never
     > &
       AsyncIterable<T> &
-      Pipeline<DB, TB, O, T, S>
+      BasePipeline<DB, TB, O, T, S>
   : S["lazy"] extends false
-    ? Pipeline<DB, TB, O, T, S>
+    ? BasePipeline<DB, TB, O, T, S>
     : never;
 
-export interface Pipeline<
+export interface BasePipeline<
   DB,
   TB extends keyof DB,
   O,
   T,
-  S extends QueryPipelineState,
+  S extends PipelineState,
 > {
   /**
    * Pipeline query
@@ -60,32 +60,30 @@ export interface Pipeline<
    */
   extend<N>(
     func: (qb: SelectQueryBuilder<DB, TB, O>) => SelectQueryBuilder<DB, TB, N>,
-  ): QueryBuilderPipeline<DB, TB, N, Merge<O, T, N>, S>;
+  ): Pipeline<DB, TB, N, Merge<O, T, N>, S>;
   /**
    * Adjust the transformer
    * @param func
    */
-  map<N>(func: (data: T) => N): QueryBuilderPipeline<DB, TB, O, N, S>;
+  map<N>(func: (data: T) => N): Pipeline<DB, TB, O, N, S>;
   /**
    * Apply modifiers to the pipeline
    * @param func
    */
   compose<QN, TN>(
-    func: (
-      p: QueryBuilderPipeline<DB, TB, O, T, S>,
-    ) => QueryBuilderPipeline<DB, TB, QN, TN, S>,
-  ): QueryBuilderPipeline<DB, TB, QN, TN, S>;
+    func: (p: Pipeline<DB, TB, O, T, S>) => Pipeline<DB, TB, QN, TN, S>,
+  ): Pipeline<DB, TB, QN, TN, S>;
   /**
    * When returning a single record, throw instead of returning `null`
    */
-  throwIfNotFound(): QueryBuilderPipeline<
+  throwIfNotFound(): Pipeline<
     DB,
     TB,
     O,
     T,
     Omit<S, "throwIfNotFound"> & { throwIfNotFound: true }
   >;
-  lazy(): QueryBuilderPipeline<DB, TB, O, T, Omit<S, "lazy"> & { lazy: true }>;
+  lazy(): Pipeline<DB, TB, O, T, Omit<S, "lazy"> & { lazy: true }>;
   first: FirstFn<T, S>;
   stream: StreamFn<T>;
   /**

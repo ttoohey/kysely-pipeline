@@ -1,16 +1,12 @@
-import {
-  createQueryPipeline,
-  QueryBuilderPipeline,
-  QueryPipelineState,
-} from "kysely-pipeline";
+import { pipeline, Pipeline, PipelineState } from "kysely-pipeline";
 import { Database, db } from "./db.js";
 
 export type PetPipeline<
   O,
   T = O,
-  S extends QueryPipelineState = QueryPipelineState,
+  S extends PipelineState = PipelineState,
   TB extends keyof Database = "pet",
-> = TB extends "pet" ? QueryBuilderPipeline<Database, TB, O, T, S> : never;
+> = TB extends "pet" ? Pipeline<Database, TB, O, T, S> : never;
 
 /**
  * Find records from the `pet` table.
@@ -19,5 +15,5 @@ export type PetPipeline<
  */
 export function findPet() {
   const query = db.selectFrom("pet").selectAll();
-  return createQueryPipeline(query).throwIfNotFound();
+  return pipeline(query).throwIfNotFound();
 }

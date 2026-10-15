@@ -1,7 +1,7 @@
 import { SelectQueryBuilder } from "kysely";
-import { QueryPipelineState } from "./types.js";
+import { PipelineState } from "./types.js";
 
-export type FirstFn<T, S extends QueryPipelineState> = () => Promise<
+export type FirstFn<T, S extends PipelineState> = () => Promise<
   S["throwIfNotFound"] extends true
     ? T
     : S["throwIfNotFound"] extends false
@@ -9,13 +9,7 @@ export type FirstFn<T, S extends QueryPipelineState> = () => Promise<
       : never
 >;
 
-export function first<
-  DB,
-  TB extends keyof DB,
-  O,
-  T,
-  S extends QueryPipelineState,
->(
+export function first<DB, TB extends keyof DB, O, T, S extends PipelineState>(
   query: SelectQueryBuilder<DB, TB, O>,
   transform: (data: O) => T,
   state: S,

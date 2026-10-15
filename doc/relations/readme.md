@@ -52,7 +52,6 @@ things:
 
 ```ts
 // person.ts
-
 /**
  * Factory method for a pipeline composition callback to extend a `person`
  * query with a `pets` object containing an array of related `pet` records.
@@ -60,10 +59,10 @@ things:
  * @param petPipeline PetPipeline
  * @returns (pipe: PersonPipeline) => PersonPipeline
  */
-export function addPetsToPerson<PetO, T, S extends QueryPipelineState>(
+export function addPetsToPerson<PetO, T, S extends PipelineState>(
   petPipeline: PetPipeline<PetO, T, S>,
 ) {
-  return <O, T, S extends QueryPipelineState>(
+  return <O, T, S extends PipelineState>(
     personPipeline: PersonPipeline<O, T, S>,
   ) =>
     personPipeline
@@ -113,7 +112,6 @@ to `person` via the `pet.owner_id` field.
 
 ```ts
 // pet.ts
-
 /**
  * Factory method for a pipeline composition callback to extend a `pet` query
  * with an `owner` object containing the pet's related owner (`person`) record.
@@ -121,12 +119,10 @@ to `person` via the `pet.owner_id` field.
  * @param ownerPipeline PersonPipeline
  * @returns query PetPipeline with 'owner' property
  */
-export function addOwnerToPet<PersonO, T, S extends QueryPipelineState>(
+export function addOwnerToPet<PersonO, T, S extends PipelineState>(
   ownerPipeline: PersonPipeline<PersonO, T, S>,
 ) {
-  return <O, T, S extends QueryPipelineState>(
-    petPipeline: PetPipeline<O, T, S>,
-  ) =>
+  return <O, T, S extends PipelineState>(petPipeline: PetPipeline<O, T, S>) =>
     petPipeline
       .extend((query) =>
         query.select(({ ref }) =>
@@ -154,7 +150,6 @@ cast to the correct type, and ensures the pipeline's transformation isn't lost.
 
 ```ts
 // person.ts
-
 /**
  * Transform a "person" record that was JSON-ified by being selected via
  * `jsonArrayFrom()` or `jsonObjectFrom()`.
@@ -184,7 +179,6 @@ relation there's a couple of nuances.
 
 ```ts
 // person.ts
-
 /**
  * Factory method for a pipeline composition callbcak to extend a `person`
  * query with a `mother` object containing the related mother's `person` record.
@@ -195,9 +189,9 @@ relation there's a couple of nuances.
 export function addMotherToPerson<
   MotherO extends { id: number },
   T,
-  S extends QueryPipelineState,
+  S extends PipelineState,
 >(motherPipeline: PersonPipeline<MotherO, T, S>) {
-  return <O, T, S extends QueryPipelineState>(
+  return <O, T, S extends PipelineState>(
     personPipelne: PersonPipeline<O, T, S>,
   ) =>
     personPipelne

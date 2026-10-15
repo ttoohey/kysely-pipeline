@@ -1,7 +1,7 @@
 import { SelectQueryBuilder } from "kysely";
 import { thenable } from "./thenable.js";
 import { first } from "./first.js";
-import { QueryPipelineState } from "./types.js";
+import { PipelineState } from "./types.js";
 
 export function lazyFirst<
   TObject extends object,
@@ -9,7 +9,7 @@ export function lazyFirst<
   TB extends keyof DB,
   O,
   T,
-  S extends QueryPipelineState,
+  S extends PipelineState,
 >(
   object: TObject,
   query: SelectQueryBuilder<DB, TB, O>,

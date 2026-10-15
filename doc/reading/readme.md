@@ -2,23 +2,28 @@
 
 The different ways of reading data from a pipeline.
 
-- use `await` to get a single database record
-- use `for await..of` to stream database records
+- use `first()` to get a single database record
+- use `stream()` to stream database records
 - use `.list()` to get an array of records
 - use `.page()` to get an array of records and pagination meta data using offset pagination
 - use `.seek()` to get an array of records and paginateion meta data using cursor/keyset pagination
 - use `.cursor()` to use cursor/keyset iteration to stream database records
 
+The `.lazy()` modifier will set the `PipelineState['lazy']` flag turning the
+pipeline into `thenable` (Promise-like) object. Using `await pipeline().lazy()`
+will execute the `first()` method to get a single record. Using `for await..of`
+on the pipeline will execute the `stream()` method to stream the records.
+
 ```ts
 import { Selectable } from "kysely";
-import { createQueryPipeline } from "kysely-pipeline";
+import { pipeline } from "kysely-pipeline";
 import { Database, db } from "./db.js";
 
 type Person = Selectable<Database["person"]>;
 
 const query = db.selectFrom("person").selectAll();
-const pipeline = () => createQueryPipeline(query);
-const lazyPipeline = () => pipeline().lazy();
+const findPerson = () => pipeline(query);
+const findPersonLazy = () => findPerson().lazy();
 
 /**
  * A pipeline is a "thenable" object which resolves
@@ -27,7 +32,7 @@ const lazyPipeline = () => pipeline().lazy();
  * It calls the query builder `executeTakeFirst()` method.
  */
 async () => {
-  const person = await lazyPipeline();
+  const person = await findPersonLazy();
   console.log(person satisfies Person | null);
 };
 
@@ -39,7 +44,7 @@ async () => {
  * It calls the query builder `executeTakeFirstOrThrow()` method.
  */
 async () => {
-  const person = await lazyPipeline().throwIfNotFound();
+  const person = await findPersonLazy().throwIfNotFound();
   console.log(person satisfies Person);
 };
 
@@ -52,11 +57,11 @@ async () => {
  * It calls the query builder `execute()` method.
  */
 async () => {
-  const people = await pipeline().list();
+  const people = await findPerson().list();
   console.log(people satisfies Person[]);
 };
 async (limit?: number, offset?: number) => {
-  const people = await pipeline().list(limit, offset);
+  const people = await findPerson().list(limit, offset);
   console.log(people satisfies Person[]);
 };
 
@@ -73,12 +78,12 @@ async (limit?: number, offset?: number) => {
  * The `meta` result shape depends on `options.counting`.
  */
 async (page: number = 1, pageSize: number = 10) => {
-  const result = await pipeline().page(page, pageSize);
+  const result = await findPerson().page(page, pageSize);
   console.log(result.items satisfies Person[], result.meta);
 };
 
 async (page: number = 1, pageSize: number = 10) => {
-  const result = await pipeline().page(page, pageSize, {
+  const result = await findPerson().page(page, pageSize, {
     counting: false,
   });
   console.log(result.items satisfies Person[], result.meta);
@@ -105,19 +110,19 @@ async (page: number = 1, pageSize: number = 10) => {
  * total count of records. (default is false)
  */
 async () => {
-  const result = await pipeline().seek("person.id", {
+  const result = await findPerson().seek("person.id", {
     first: 10,
   });
   console.log(result.items satisfies Person[], result.meta);
 };
 
 async () => {
-  const page1 = await pipeline().seek(["person.created_at", "id"], {
+  const page1 = await findPerson().seek(["person.created_at", "id"], {
     first: 10,
     direction: ["asc", "desc"],
   });
   if (page1.meta.hasNext) {
-    const page2 = await pipeline().seek(["person.created_at", "id"], {
+    const page2 = await findPerson().seek(["person.created_at", "id"], {
       first: 10,
       direction: ["asc", "desc"],
       cursor: page1.meta.nextCursor,
@@ -127,7 +132,7 @@ async () => {
 };
 
 async (cursor: [Date, number]) => {
-  const result = await pipeline().seek(["created_at", "person.id"], {
+  const result = await findPerson().seek(["created_at", "person.id"], {
     first: 10,
     cursor,
     counting: true,
@@ -149,7 +154,7 @@ async (cursor: [Date, number]) => {
  * It calls the query builder `stream()` method.
  */
 async () => {
-  for await (const person of lazyPipeline()) {
+  for await (const person of findPersonLazy()) {
     console.log(person satisfies Person);
   }
 };
@@ -160,7 +165,7 @@ async () => {
  * async results.
  */
 async () => {
-  for await (const person of pipeline().cursor("person.id")) {
+  for await (const person of findPerson().cursor("person.id")) {
     console.log(person satisfies Person);
   }
 };
@@ -169,13 +174,13 @@ async () => {
  * `.cursor()` with a composite index.
  */
 async () => {
-  for await (const person of pipeline().cursor(["created_at", "person.id"])) {
+  for await (const person of findPerson().cursor(["created_at", "person.id"])) {
     console.log(person satisfies Person);
   }
 };
 
 async () => {
-  for await (const person of pipeline().stream()) {
+  for await (const person of findPerson().stream()) {
     console.log(person satisfies Person);
   }
 };
